@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>py-auto-api 可视化编辑器</title>
+    <link rel="stylesheet" href="/static/css/editor.css">
+    <script src="https://unpkg.com/axios/dist/axios.min.js"></script>
+    <script src="https://unpkg.com/socket.io/client/dist/socket.io.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <!-- 顶部导航栏 -->
+        <header class="header">
+            <h1>🤖 py-auto-api 可视化编辑器</h1>
+            <div class="header-controls">
+                <button id="newSession" class="btn btn-primary">新建会话</button>
+                <button id="loadTask" class="btn btn-secondary">加载任务</button>
+                <span id="sessionInfo" class="session-info"></span>
+            </div>
+        </header>
+
+        <div class="main-content">
+            <!-- 左侧工具栏 -->
+            <aside class="toolbar">
+                <div class="toolbar-section">
+                    <h3>录制控制</h3>
+                    <button id="startRecording" class="btn btn-success">开始录制</button>
+                    <button id="stopRecording" class="btn btn-danger" disabled>停止录制</button>
+                    <button id="clearRecording" class="btn btn-warning">清除录制</button>
+                </div>
+
+                <div class="toolbar-section">
+                    <h3>浏览器控制</h3>
+                    <button id="launchBrowser" class="btn btn-primary">启动浏览器</button>
+                    <button id="navigateUrl" class="btn btn-secondary">导航到URL</button>
+                    <input type="url" id="urlInput" placeholder="输入URL..." class="url-input">
+                    <button id="takeScreenshot" class="btn btn-info">截图</button>
+                </div>
+
+                <div class="toolbar-section">
+                    <h3>步骤操作</h3>
+                    <button id="addStep" class="btn btn-secondary">手动添加步骤</button>
+                    <button id="editStep" class="btn btn-secondary" disabled>编辑步骤</button>
+                    <button id="deleteStep" class="btn btn-danger" disabled>删除步骤</button>
+                    <button id="reorderSteps" class="btn btn-secondary" disabled>重新排序</button>
+                </div>
+
+                <div class="toolbar-section">
+                    <h3>任务管理</h3>
+                    <button id="saveTask" class="btn btn-success">保存任务</button>
+                    <button id="executeTask" class="btn btn-primary">执行任务</button>
+                    <button id="previewTask" class="btn btn-info">预览</button>
+                    <button id="exportSteps" class="btn btn-secondary">导出</button>
+                </div>
+            </aside>
+
+            <!-- 中间浏览器区域 -->
+            <main class="browser-area">
+                <div class="browser-header">
+                    <h3>浏览器预览</h3>
+                    <div class="browser-controls">
+                        <span id="browserStatus" class="status-indicator">未连接</span>
+                        <button id="refreshBrowser" class="btn btn-sm">刷新</button>
+                    </div>
+                </div>
+                <div id="browserFrame" class="browser-frame">
+                    <div id="browserPlaceholder" class="browser-placeholder">
+                        <p>点击"启动浏览器"开始录制</p>
+                    </div>
+                </div>
+            </main>
+
+            <!-- 右侧步骤面板 -->
+            <aside class="step-panel">
+                <div class="step-panel-header">
+                    <h3>录制步骤</h3>
+                    <span id="stepCount" class="step-count">0 步骤</span>
+                </div>
+                <div id="stepList" class="step-list">
+                    <div id="emptyState" class="empty-state">
+                        <p>尚未录制任何步骤</p>
+                        <p>点击"开始录制"开始记录操作</p>
+                    </div>
+                </div>
+            </aside>
+        </div>
+
+        <!-- 底部状态栏 -->
+        <footer class="status-bar">
+            <div class="status-left">
+                <span id="recordingStatus">未录制</span>
+                <span id="connectionStatus">未连接</span>
+            </div>
+            <div class="status-right">
+                <span id="progressInfo"></span>
+                <span id="timeInfo"></span>
+            </div>
+        </footer>
+    </div>
+
+    <!-- 模态框 -->
+    <!-- 添加步骤模态框 -->
+    <div id="addStepModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>添加步骤</h3>
+                <span class="close">×</span>
+            </div>
+            <div class="modal-body">
+                <form id="addStepForm">
+                    <div class="form-group">
+                        <label for="stepName">步骤名称:</label>
+                        <input type="text" id="stepName" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="actionType">操作类型:</label>
+                        <select id="actionType" required>
+                            <option value="click">点击</option>
+                            <option value="type">输入</option>
+                            <option value="scroll">滚动</option>
+                            <option value="wait">等待</option>
+                            <option value="navigate">导航</option>
+                            <option value="screenshot">截图</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="targetSelector">目标选择器:</label>
+                        <input type="text" id="targetSelector" placeholder="CSS选择器或XPath">
+                    </div>
+                    <div class="form-group">
+                        <label for="targetText">输入文本:</label>
+                        <input type="text" id="targetText" placeholder="输入文本">
+                    </div>
+                    <div class="form-group">
+                        <label for="targetUrl">目标URL:</label>
+                        <input type="url" id="targetUrl" placeholder="URL">
+                    </div>
+                    <div class="form-group">
+                        <label for="waitTime">等待时间(毫秒):</label>
+                        <input type="number" id="waitTime" value="0" min="0">
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="closeModal('addStepModal')">取消</button>
+                <button type="button" class="btn btn-primary" onclick="saveStep()">保存</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 任务保存模态框 -->
+    <div id="saveTaskModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>保存任务</h3>
+                <span class="close">×</span>
+            </div>
+            <div class="modal-body">
+                <form id="saveTaskForm">
+                    <div class="form-group">
+                        <label for="taskName">任务名称:</label>
+                        <input type="text" id="taskName" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="taskDescription">任务描述:</label>
+                        <textarea id="taskDescription" rows="3"></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label for="taskUrl">目标URL:</label>
+                        <input type="url" id="taskUrl" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="taskPriority">优先级:</label>
+                        <select id="taskPriority">
+                            <option value="0">普通</option>
+                            <option value="1">高</option>
+                            <option value="2">紧急</option>
+                        </select>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="closeModal('saveTaskModal')">取消</button>
+                <button type="button" class="btn btn-primary" onclick="saveTask()">保存</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 加载任务模态框 -->
+    <div id="loadTaskModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>加载任务</h3>
+                <span class="close">×</span>
+            </div>
+            <div class="modal-body">
+                <div id="taskList" class="task-list">
+                    <!-- 任务列表将在这里动态生成 -->
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="closeModal('loadTaskModal')">取消</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 提示消息 -->
+    <div id="toast" class="toast"></div>
+
+    <script src="/static/js/editor.js"></script>
+</body>
+</html>
